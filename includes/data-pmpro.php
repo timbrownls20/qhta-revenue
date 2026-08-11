@@ -168,7 +168,7 @@ function qhta_revenue_normalise_membership_order( $order, $meta ) {
 	$gateway    = isset( $order->gateway ) ? (string) $order->gateway : '';
 	$amount     = isset( $order->total ) ? (float) $order->total : 0.0;
 
-	list( $fee, $net ) = qhta_revenue_membership_fee_net( $order, $meta, $amount );
+	list( $fee, $net, $fee_breakdown ) = qhta_revenue_membership_fee_net( $order, $meta, $amount );
 
 	$txn = array_filter(
 		array(
@@ -192,9 +192,10 @@ function qhta_revenue_normalise_membership_order( $order, $meta ) {
 			'customer'     => $customer,
 			'email'        => $email,
 			'item'         => $level,
-			'amount'       => $amount,
-			'fee'          => $fee,
-			'net'          => $net,
+			'amount'        => $amount,
+			'fee'           => $fee,
+			'net'           => $net,
+			'fee_breakdown' => $fee_breakdown,
 			'status'       => qhta_revenue_normalise_status( 'pmpro', $raw_status ),
 			'status_raw'   => $raw_status,
 			'gateway'      => qhta_revenue_pmpro_gateway_label( $gateway ),
@@ -370,12 +371,18 @@ function qhta_revenue_membership_fee_net( $order, $meta, $amount ) {
 	 * payment_transaction_id, look up the charge's balance transaction and
 	 * return its fee and net. Off by default — it needs a Stripe secret key.
 	 *
-	 * @param array{0:float|null,1:float|null} $fee_net Fee and net, null when unknown.
-	 * @param object                           $order   PMPro order row.
-	 * @param array                            $meta    Order meta.
-	 * @param float                            $amount  Order gross.
+	 * This is where the Stripe backfill in stripe-fees.php attaches — and for
+	 * PMPro it is not a fallback but the only source, because PMPro records no
+	 * processing fee of its own anywhere.
+	 *
+	 * @param array{0:float|null,1:float|null,2:array} $fee_net Fee, net and fee breakdown.
+	 * @param object                                   $order   PMPro order row.
+	 * @param array                                    $meta    Order meta.
+	 * @param float                                    $amount  Order gross.
 	 */
-	return (array) apply_filters( 'qhta_revenue_membership_fee_net', array( $fee, $net ), $order, $meta, $amount );
+	return qhta_revenue_normalise_fee_net(
+		apply_filters( 'qhta_revenue_membership_fee_net', array( $fee, $net, array() ), $order, $meta, $amount )
+	);
 }
 
 /**

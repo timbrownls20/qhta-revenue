@@ -130,7 +130,7 @@ function qhta_revenue_normalise_store_order( $order ) {
 		$customer = $user ? $user->display_name : '';
 	}
 
-	list( $fee, $net ) = qhta_revenue_store_fee_net( $order );
+	list( $fee, $net, $fee_breakdown ) = qhta_revenue_store_fee_net( $order );
 
 	list( $member_state, $member_level, $member_note ) = qhta_revenue_member_flag( $user_id, $email );
 
@@ -145,9 +145,10 @@ function qhta_revenue_normalise_store_order( $order ) {
 			'customer'     => $customer,
 			'email'        => $email,
 			'item'         => qhta_revenue_order_items_label( $order ),
-			'amount'       => (float) $order->get_total(),
-			'fee'          => $fee,
-			'net'          => $net,
+			'amount'        => (float) $order->get_total(),
+			'fee'           => $fee,
+			'net'           => $net,
+			'fee_breakdown' => $fee_breakdown,
 			'status'       => qhta_revenue_normalise_status( 'woo', $raw_status ),
 			'status_raw'   => $raw_status,
 			'gateway'      => (string) $order->get_payment_method_title(),
@@ -261,10 +262,12 @@ function qhta_revenue_store_fee_net( $order ) {
 	 * The hook an optional Stripe-API backfill would use for historic orders
 	 * with no recorded fee.
 	 *
-	 * @param array{0:float|null,1:float|null} $fee_net Fee and net, null when unknown.
-	 * @param WC_Order                         $order   Order.
+	 * @param array{0:float|null,1:float|null,2:array} $fee_net Fee, net and fee breakdown.
+	 * @param WC_Order                                 $order   Order.
 	 */
-	return (array) apply_filters( 'qhta_revenue_store_fee_net', array( $fee, $net ), $order );
+	return qhta_revenue_normalise_fee_net(
+		apply_filters( 'qhta_revenue_store_fee_net', array( $fee, $net, array() ), $order )
+	);
 }
 
 /**

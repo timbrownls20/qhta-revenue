@@ -112,6 +112,16 @@
 	font-style: italic;
 }
 
+/*
+ * A fee Stripe itemised carries a breakdown on hover. The dotted underline is
+ * the conventional "there is more here" cue — without it nobody discovers that
+ * part of the fee is PMPro's cut rather than Stripe's.
+ */
+.qhta-revenue-fee--itemised {
+	border-bottom: 1px dotted #8c8f94;
+	cursor: help;
+}
+
 .qhta-revenue-source {
 	display: inline-block;
 	padding: 1px 7px;

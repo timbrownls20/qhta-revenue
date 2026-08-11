@@ -100,19 +100,68 @@ function qhta_revenue_render_page() {
 }
 
 /**
- * Offer the fee-source diagnostic, but only when it would help.
+ * Explain any remaining unknown fees, and what to do about them.
  *
- * Membership orders read Unknown until the PMPro fee meta key has been confirmed
- * on a real order — which is a one-off job, and one nobody will remember to do
- * from a line in the README. So the offer appears exactly where the consequence
- * is visible: under a table that is showing unknown membership fees, and nowhere
- * else.
+ * There are three quite different reasons a fee can still be Unknown, and they
+ * need three different actions — so the footer names which one applies rather
+ * than leaving a page of Unknowns with no explanation:
+ *
+ *   1. The Stripe lookup is unavailable (no usable key). Nothing will resolve
+ *      until that is fixed, so say so instead of implying the data is missing.
+ *   2. The lookup ran out of its per-request budget. Nothing is wrong; a reload
+ *      continues the backlog, and each fetched fee is cached from then on.
+ *   3. Everything that could be looked up was, and some orders still have no
+ *      retrievable fee — a transaction id that is not a charge, or a charge
+ *      settled in another currency.
  *
  * @param array $totals Totals from qhta_revenue_totals().
  * @return void
  */
 function qhta_revenue_render_diagnostic_prompt( $totals ) {
-	if ( empty( $totals['membership']['unknown_fee'] ) ) {
+	if ( empty( $totals['all']['unknown_fee'] ) ) {
+		return;
+	}
+
+	$unknown = (int) $totals['all']['unknown_fee'];
+	$budget  = qhta_revenue_stripe_budget_state();
+
+	if ( ! qhta_revenue_stripe_enabled() ) {
+		printf(
+			'<p class="qhta-revenue-muted qhta-revenue-unknown">%s</p>',
+			esc_html(
+				sprintf(
+					/* translators: %d: how many orders have an unresolved fee. */
+					_n(
+						'%d order has no fee figure, and Stripe cannot be asked for it: no usable Stripe key was found in PMPro\'s payment settings. Those orders contribute their gross but no net.',
+						'%d orders have no fee figure, and Stripe cannot be asked for them: no usable Stripe key was found in PMPro\'s payment settings. Those orders contribute their gross but no net.',
+						$unknown,
+						'qhta-revenue'
+					),
+					$unknown
+				)
+			)
+		);
+		return;
+	}
+
+	if ( $budget['deferred'] > 0 ) {
+		printf(
+			'<p class="qhta-revenue-muted">%1$s <a href="%2$s">%3$s</a></p>',
+			esc_html(
+				sprintf(
+					/* translators: %d: how many fee lookups were deferred to a later page load. */
+					_n(
+						'%d fee is still to be fetched from Stripe — lookups are capped per page load so a wide date range cannot time out. Each one is cached once fetched.',
+						'%d fees are still to be fetched from Stripe — lookups are capped per page load so a wide date range cannot time out. Each one is cached once fetched.',
+						$budget['deferred'],
+						'qhta-revenue'
+					),
+					$budget['deferred']
+				)
+			),
+			esc_url( add_query_arg( 'qhta-revenue-continue', time() ) ),
+			esc_html__( 'Fetch the next batch', 'qhta-revenue' )
+		);
 		return;
 	}
 
@@ -120,18 +169,18 @@ function qhta_revenue_render_diagnostic_prompt( $totals ) {
 		'<p class="qhta-revenue-muted">%1$s <a href="%2$s">%3$s</a></p>',
 		esc_html(
 			sprintf(
-				/* translators: %d: how many membership orders have no recorded fee. */
+				/* translators: %d: how many orders have an unresolved fee. */
 				_n(
-					'%d membership order has no recorded Stripe fee, so it is excluded from the net total.',
-					'%d membership orders have no recorded Stripe fee, so they are excluded from the net total.',
-					$totals['membership']['unknown_fee'],
+					'%d order still has no retrievable fee — usually a transaction id that is not a Stripe charge, or a charge settled in another currency. It contributes its gross but no net.',
+					'%d orders still have no retrievable fee — usually a transaction id that is not a Stripe charge, or a charge settled in another currency. They contribute their gross but no net.',
+					$unknown,
 					'qhta-revenue'
 				),
-				$totals['membership']['unknown_fee']
+				$unknown
 			)
 		),
 		esc_url( add_query_arg( 'qhta_revenue_diag', 1 ) ),
-		esc_html__( 'Run the fee-source diagnostic', 'qhta-revenue' )
+		esc_html__( 'Inspect what is stored against these orders', 'qhta-revenue' )
 	);
 }
 
@@ -379,7 +428,25 @@ function qhta_revenue_render_totals( $totals, $filters ) {
 	}
 
 	echo '</tbody></table>';
-	echo '<p class="qhta-revenue-muted">' . esc_html__( 'Gross is the order total as recorded, including tax, in AUD. Net is gross minus the Stripe fee the gateway recorded; orders with no recorded fee contribute their gross but no net, and are counted above. Refunds are not subtracted — refunded orders appear under the Refunded status.', 'qhta-revenue' ) . '</p>';
+
+	// PMPro's free Stripe Connect integration adds its own 2% on top of
+	// Stripe's processing fee, out of the same payout. It is worth calling out
+	// separately rather than burying inside "fees", because unlike a card
+	// network's cut it is removable — a premium PMPro licence sets it to zero.
+	if ( ! empty( $totals['all']['platform_fee'] ) ) {
+		printf(
+			'<p class="qhta-revenue-muted">%s</p>',
+			esc_html(
+				sprintf(
+					/* translators: %s: total platform fee for the filtered set. */
+					__( 'Of those fees, %s is PMPro\'s own platform fee rather than Stripe\'s — that component is charged by the free Stripe Connect integration and goes away on a premium PMPro licence.', 'qhta-revenue' ),
+					qhta_revenue_money( $totals['all']['platform_fee'] )
+				)
+			)
+		);
+	}
+
+	echo '<p class="qhta-revenue-muted">' . esc_html__( 'Gross is the order total as recorded, including tax, in AUD. Net is gross minus the fee Stripe actually deducted; orders whose fee could not be determined contribute their gross but no net, and are counted above. Refunds are not subtracted — refunded orders appear under the Refunded status.', 'qhta-revenue' ) . '</p>';
 	echo '</div>';
 }
 

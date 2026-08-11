@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       QHTA Revenue
  * Description:       Admin-only, read-only combined income report for qhta.com.au — merges PMPro membership orders and WooCommerce store orders into one filterable, exportable table, with a Member? flag on store buyers and the Stripe fee and net banked per order. No writes, no front-end, no invoices.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Author:            QHTA
  * License:           GPL-2.0-or-later
  * Requires at least: 6.0
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'QHTA_REVENUE_VERSION', '1.0.0' );
+define( 'QHTA_REVENUE_VERSION', '1.1.0' );
 define( 'QHTA_REVENUE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'QHTA_REVENUE_URL', plugin_dir_url( __FILE__ ) );
 define( 'QHTA_REVENUE_SLUG', 'qhta-revenue' );
@@ -44,13 +44,20 @@ define( 'QHTA_REVENUE_SLUG', 'qhta-revenue' );
  *      them. The two sets only ever meet in PHP, after both have been
  *      normalised. There is deliberately no SQL union.
  *
- *   2. NOTHING HERE WRITES. No order, member, product, user, option or transient
- *      is created or changed by any code path in this plugin, including the CSV
+ *   2. NOTHING HERE CHANGES A RECORD. No order, member, product, user or setting
+ *      is created or modified by any code path in this plugin, including the CSV
  *      export. Anything that mutates belongs in another QHTA plugin — invoices
  *      in qhta-pmpro-invoice-extensions, the purchase gate in qhta-commerce.
  *      That is why no screen option is registered for the per-page count: doing
- *      so would write a user meta row, and "reads only" is worth more than a
- *      configurable page size.
+ *      so would write a user meta row against the viewer, and "changes nothing"
+ *      is worth more than a configurable page size.
+ *
+ *      The single exception, added in 1.1.0, is the Stripe fee cache in
+ *      includes/stripe-fees.php: fee lookups are cached in transients, because
+ *      a settled charge's fee is immutable and re-fetching it on every page
+ *      load would be slow and pointless. That is a cache, not data — deleting
+ *      every one of those transients loses nothing but speed, and no business
+ *      record is touched either way.
  *
  * One file per concern under includes/, split along the line that actually
  * matters here — the two different data-access mechanisms.
@@ -297,5 +304,6 @@ require_once QHTA_REVENUE_PATH . 'includes/report.php';
 require_once QHTA_REVENUE_PATH . 'includes/member-flag.php';
 require_once QHTA_REVENUE_PATH . 'includes/data-pmpro.php';
 require_once QHTA_REVENUE_PATH . 'includes/data-woo.php';
+require_once QHTA_REVENUE_PATH . 'includes/stripe-fees.php';
 require_once QHTA_REVENUE_PATH . 'includes/export-csv.php';
 require_once QHTA_REVENUE_PATH . 'includes/admin-page.php';

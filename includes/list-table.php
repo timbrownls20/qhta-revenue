@@ -257,10 +257,27 @@ class QHTA_Revenue_List_Table extends WP_List_Table {
 	 */
 	public function column_fee( $item ) {
 		if ( null === $item['fee'] ) {
-			return '<span class="qhta-revenue-unknown" title="' . esc_attr__( 'No fee recorded against this order — it is excluded from the fee and net totals.', 'qhta-revenue' ) . '">' . esc_html__( 'Unknown', 'qhta-revenue' ) . '</span>';
+			return '<span class="qhta-revenue-unknown" title="' . esc_attr__( 'No fee recorded against this order and none retrievable from Stripe — it is excluded from the fee and net totals.', 'qhta-revenue' ) . '">' . esc_html__( 'Unknown', 'qhta-revenue' ) . '</span>';
 		}
 
-		return esc_html( qhta_revenue_money( $item['fee'] ) );
+		$amount = esc_html( qhta_revenue_money( $item['fee'] ) );
+
+		// When Stripe itemised the deduction, show the components on hover. On
+		// this site that is usually Stripe's own charge plus PMPro's platform
+		// cut, which is worth being able to see without doing the subtraction.
+		$breakdown = function_exists( 'qhta_revenue_fee_breakdown_label' )
+			? qhta_revenue_fee_breakdown_label( $item['fee_breakdown'] )
+			: '';
+
+		if ( '' === $breakdown ) {
+			return $amount;
+		}
+
+		return sprintf(
+			'<span class="qhta-revenue-fee--itemised" title="%1$s">%2$s</span>',
+			esc_attr( $breakdown ),
+			$amount
+		);
 	}
 
 	/**

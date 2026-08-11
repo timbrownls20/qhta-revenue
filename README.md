@@ -36,10 +36,16 @@ and WooCommerce order streams.
 | Member *pricing* | PMPro WooCommerce Integration add-on (no code) |
 
 **Test:** *"Is it admin-only, read-only reporting that reads across both order
-streams?"* Yes → here. **Anything that writes does not belong here**, and there
-is no code path in this plugin that writes to any order, member, user, option or
-transient. Not even a screen option, because registering one would write user
-meta — the page size is a filter instead.
+streams?"* Yes → here. **Anything that changes a record does not belong here**,
+and no code path in this plugin creates or modifies an order, member, user or
+setting. Not even a screen option, because registering one would write user meta
+against the viewer — the page size is a filter instead.
+
+The one thing it writes, since 1.1.0, is the **Stripe fee cache** (transients).
+A settled charge's fee is immutable, so re-fetching it on every page load would
+be slow and pointless. That is a cache, not data: deleting every one of those
+transients loses nothing but speed, and no business record is touched either
+way.
 
 It legitimately depends on **both** PMPro and WooCommerce, the same justified
 dual dependency `qhta-membership` has, because the reporting question itself
@@ -85,7 +91,7 @@ income with it.
 | Customer | billing name / display name, with email beneath | billing name / display name, with email beneath |
 | Item | membership level name | first product name `(+N)` |
 | Gross | order total | `$order->get_total()` |
-| Stripe fee | recorded fee, `0` for Pay by Check, else **Unknown** | `_stripe_fee`, `0` for non-Stripe, else **Unknown** |
+| Stripe fee | looked up from Stripe (PMPro records none), `0` for Pay by Check | `_stripe_fee`, else looked up from Stripe, `0` for non-Stripe |
 | Net | gross − fee | `_stripe_net`, else gross − fee |
 | Status | PMPro status, normalised | Woo status, normalised |
 | Gateway | PMPro gateway | Woo payment method title |
@@ -141,18 +147,19 @@ membership.
 
 ### Stripe fee and net — how "Unknown" works
 
-The report shows the fee **the gateway recorded** and the net that follows from
-it. It never computes a fee from a percentage: Stripe's actual charge varies
-with card origin, currency and GST, so a formula would produce a number that
-looks authoritative and is wrong.
+The report shows the fee **the gateway recorded, or the one Stripe itself
+reports**, and the net that follows from it. It never computes a fee from a
+percentage: Stripe's actual charge varies with card origin, currency and GST, so
+a formula would produce a number that looks authoritative and is wrong.
 
-There are three cases, and the difference between the last two matters:
+There are four cases, and the difference between the last two matters most:
 
 | Case | Fee | Net |
 |---|---|---|
 | Stripe order with a recorded fee | the recorded figure | gross − fee (or the recorded net) |
+| Stripe order with nothing recorded | **looked up from Stripe** (see below) | gross − fee |
 | **Non-Stripe** — Pay by Check, bank transfer | **`0`**, a known zero | = gross. That money arrives whole. |
-| Stripe order with nothing recorded | **Unknown** | Unknown |
+| Stripe order the lookup cannot resolve | **Unknown** | Unknown |
 
 **Unknown is never shown as `$0.00`, and never counted as zero.** A row with an
 unknown fee contributes its gross to the gross total and contributes *nothing*
@@ -168,31 +175,93 @@ Sources read:
   Gateway), falling back to the 3.x-era `Stripe Fee` / `Net Revenue From Stripe`.
   Read with `$order->get_meta()`, which is HPOS-safe. Filter:
   `qhta_revenue_woo_fee_meta_keys`.
-- **Membership:** PMPro order meta, against a **candidate list of keys that has
-  not yet been confirmed against a real order on this site** — see the next
-  section. Until it is confirmed, Stripe membership orders read **Unknown**,
-  which is honest. Filter: `qhta_revenue_pmpro_fee_meta_keys`.
+- **Membership:** **Stripe itself.** See below — PMPro stores no fee at all.
 
-### Confirming the PMPro fee source (do this once)
+### Why membership fees come from the Stripe API
 
-PMPro's order screen displays "Stripe Fee" and "Stripe Payout", so the figures
-exist — but whether PMPro *stores* them as order meta or *fetches* them live
-from the charge's Stripe balance transaction at render time has not been checked
-against a real order. Guessing a meta key was explicitly not good enough, so the
-plugin ships a diagnostic instead of a guess:
+**PMPro does not record the Stripe processing fee.** Not under a meta key that
+was hard to find — it does not record it anywhere: there is no
+balance-transaction lookup in PMPro's own gateway code, and nothing fee-related
+on its orders screen. The 1.0.0 release shipped a candidate list of meta keys
+and a diagnostic to confirm them; the answer came back that there is nothing to
+confirm. So for membership orders the Stripe API is not the convenient route to
+the fee, it is **the only one**.
 
-> Open **QHTA Income** with **`&qhta_revenue_diag=1`** on the end of the URL.
+WooCommerce is different — its Stripe gateway does store `_stripe_fee` — so
+store rows only reach the API when that meta is missing (historic orders, or one
+taken by a different gateway plugin).
 
-It lists every meta key actually stored against the five most recent Stripe
-membership orders.
+**What it reads.** The charge's **balance transaction**, which is Stripe's own
+record of what it deducted: `fee` is the all-in deduction, `fee_details` breaks
+it into components.
 
-- **A fee / payout key is listed** → add it to the
-  `qhta_revenue_pmpro_fee_meta_keys` filter (or to the default list in
-  `includes/data-pmpro.php`) and membership fees stop reading Unknown.
-- **Nothing is listed** → PMPro is fetching those figures live from Stripe, and
-  the only route to them is the optional API backfill (see *Open items*).
+**The credential.** It reuses the Stripe key PMPro already holds — nothing new
+to create, store or rotate. The options are read directly because
+`PMProGateway_stripe::get_secretkey()` has been **private** since PMPro 3.0; the
+resolution below is that method's own logic against the same public options:
 
-The diagnostic is read-only and capability-gated like the rest of the screen.
+| Setup | Key read from |
+|---|---|
+| Manual API keys (`using_api_keys()`) | `pmpro_stripe_secretkey` |
+| Stripe Connect, live | `pmpro_live_stripe_connect_secretkey` |
+| Stripe Connect, sandbox | `pmpro_sandbox_stripe_connect_secretkey` |
+
+The plugin only ever issues `GET` requests with it, and the key never leaves the
+server. Because the site runs both Stripe connections against one Stripe
+account, PMPro's key looks up a WooCommerce charge as readily as a membership
+one. If you would rather use a Stripe **restricted** key scoped to read Charges,
+PaymentIntents and Balance transactions, return it from the
+`qhta_revenue_stripe_key` filter — nothing else changes. Returning `''` from
+that filter switches the lookup off entirely.
+
+No SDK is used. The call goes through `wp_remote_get()` against
+`api.stripe.com`, deliberately: both PMPro and WooCommerce bundle their own copy
+of the Stripe PHP SDK, and loading a third would risk a version clash in the
+same process.
+
+**Which ids can be looked up.** The stored transaction id decides the route —
+`ch_`/`py_` → the charge, `pi_` → the PaymentIntent's latest charge, `in_` → the
+invoice's charge. An id of another shape (a `sub_` subscription, a PayPal
+reference) has no single charge behind it and is left Unknown.
+
+**Caching and pacing.** Each resolved fee is cached for 30 days, each failed
+lookup for an hour (so an outage or a revoked key cannot cause a retry storm on
+every page load). Live lookups are capped at **25 per page load** so a wide date
+range cannot time out; the footer says how many are still queued and offers to
+fetch the next batch. Cached rows do not count against the cap.
+
+**Currency.** A balance transaction is denominated in the *settlement* currency.
+If that is not the shop's currency, the fee cannot be subtracted from the
+order's gross without a conversion this report does not do, so it stays
+**Unknown** rather than becoming a number that looks right.
+
+### PMPro's own 2% — worth knowing
+
+PMPro's **free** Stripe Connect integration charges an extra **2% application
+fee** on top of Stripe's processing fee, paid to Stranger Studios out of the same
+payout. `PMProGateway_stripe::get_application_fee_percentage()` returns 0 only if
+the site is on manual API keys or holds a premium PMPro licence — and the
+countries where it is disabled are BR, IN, MX and MY, so **Australia is not
+exempt**.
+
+A stored meta key would never have revealed this. The balance transaction does,
+as a separate `application_fee` line, so:
+
+- the **fee cell** shows the split on hover (`Stripe $2.94 + PMPro platform fee
+  $2.20`), marked with a dotted underline;
+- the **totals** call out the platform component separately whenever it is
+  non-zero, because unlike a card network's cut it is removable — a premium
+  licence sets it to zero.
+
+If that line shows a meaningful number, the licence may pay for itself.
+
+### The order-meta diagnostic
+
+Still available at **`&qhta_revenue_diag=1`** on the report URL: it lists every
+meta key stored against the five most recent Stripe membership orders. It no
+longer has a fee to find, but it is the quickest way to see what PMPro *is*
+storing against an order. Read-only and capability-gated like the rest of the
+screen.
 
 ### Filters
 
@@ -270,7 +339,9 @@ Either can be absent. With PMPro off, store rows still render and a notice says
 membership income is missing; with WooCommerce off, vice versa; with both off,
 the screen loads with an empty state and no error.
 
-No external dependencies, no build step, no Composer.
+No external dependencies, no build step, no Composer. The Stripe fee lookup
+uses `wp_remote_get()` against `api.stripe.com` — the site needs outbound HTTPS,
+which it already does for both gateways.
 
 ## Capability
 
@@ -311,9 +382,13 @@ page-cached, and no hPanel cache exclusion is needed.
 | `qhta_revenue_per_page` | `50` | Rows per page |
 | `qhta_revenue_status_map` | see above | Add a custom order status to a normalised bucket |
 | `qhta_revenue_woo_fee_meta_keys` | `_stripe_fee` / `_stripe_net` (+ 3.x keys) | A different Stripe plugin's meta keys |
-| `qhta_revenue_pmpro_fee_meta_keys` | unconfirmed candidates | **The one to set** once the diagnostic reveals the real key |
-| `qhta_revenue_store_fee_net` | recorded meta | Where a Stripe-API backfill would hook in for store orders |
-| `qhta_revenue_membership_fee_net` | recorded meta | Ditto for membership orders |
+| `qhta_revenue_pmpro_fee_meta_keys` | a few candidates | Vestigial — PMPro stores no fee. Left for an add-on that does |
+| `qhta_revenue_stripe_key` | PMPro's key | Supply a restricted read-only key, or `''` to switch the lookup off |
+| `qhta_revenue_stripe_cache_ttl` | 30 days | How long a resolved fee is cached |
+| `qhta_revenue_stripe_miss_ttl` | 1 hour | How long a failed lookup is remembered |
+| `qhta_revenue_stripe_lookup_budget` | `25` | Live Stripe lookups allowed per page load |
+| `qhta_revenue_store_fee_net` | meta, then Stripe | Last word on a store order's fee/net |
+| `qhta_revenue_membership_fee_net` | Stripe | Last word on a membership order's fee/net |
 | `qhta_revenue_pmpro_timestamps_are_utc` | `true` | If a PMPro order's date here disagrees with PMPro's own screen, try this first |
 | `qhta_revenue_rows` | merged rows | Last word on the row set |
 
@@ -340,15 +415,15 @@ page-cached, and no hPanel cache exclusion is needed.
 
 ## Open items
 
-1. **Member? current vs at-time-of-order.** v1 ships current status. Confirm that
+1. **Member? current vs at-time-of-order.** Ships as current status. Confirm that
    is acceptable, or promote the historic version.
-2. **Confirm the PMPro fee source** — run `&qhta_revenue_diag=1` (above). Until
-   this is done, Stripe membership orders show an Unknown fee.
-3. **Stripe-API fee backfill.** For historic Stripe orders with no recorded fee,
-   look the charge's balance transaction up via the Stripe API. Needs a read-only
-   restricted secret key and the SDK or a REST call; one key can back both PMPro
-   and Woo lookups. Off by default and not built — the two `*_fee_net` filters
-   are where it would attach.
+2. **The PMPro platform fee.** If the 2% line in the totals is material, a
+   premium PMPro licence removes it — worth pricing against the annual figure.
+   Nothing to build; a commercial decision the report now makes visible.
+3. **Restricted Stripe key.** The lookup currently reuses PMPro's key. If you
+   would rather it held read-only credentials of its own, create a Stripe
+   restricted key (Charges, PaymentIntents, Balance transactions: read) and
+   return it from `qhta_revenue_stripe_key`.
 4. **Net of refunds.** Whether the headline "actual income" should also subtract
    refunds, as a further column beside net-of-fees.
 5. **Monthly summary.** A totals-by-month mini-table above the list (still no

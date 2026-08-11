@@ -365,11 +365,15 @@ function qhta_revenue_sort_rows( &$rows, $orderby, $order ) {
  */
 function qhta_revenue_totals( $rows ) {
 	$blank = array(
-		'count'       => 0,
-		'gross'       => 0.0,
-		'fees'        => 0.0,
-		'net'         => 0.0,
-		'unknown_fee' => 0,
+		'count'        => 0,
+		'gross'        => 0.0,
+		'fees'         => 0.0,
+		'net'          => 0.0,
+		'unknown_fee'  => 0,
+		// The slice of the fees that is not Stripe's — PMPro's platform cut.
+		// Tracked separately because it is the one component that can be
+		// removed by a licence rather than negotiated with a card network.
+		'platform_fee' => 0.0,
 	);
 
 	$totals = array(
@@ -396,6 +400,10 @@ function qhta_revenue_totals( $rows ) {
 
 			$totals[ $bucket ]['fees'] += (float) $row['fee'];
 			$totals[ $bucket ]['net']  += ( null === $row['net'] ) ? ( (float) $row['amount'] - (float) $row['fee'] ) : (float) $row['net'];
+
+			if ( ! empty( $row['fee_breakdown']['application_fee'] ) ) {
+				$totals[ $bucket ]['platform_fee'] += (float) $row['fee_breakdown']['application_fee'];
+			}
 		}
 	}
 
@@ -427,6 +435,9 @@ function qhta_revenue_row( $args ) {
 			'amount'       => 0.0,
 			'fee'          => null,
 			'net'          => null,
+			// Components of the fee, when Stripe told us — e.g. its own charge
+			// and PMPro's platform cut, which come out of the same payout.
+			'fee_breakdown' => array(),
 			'status'       => 'other',
 			'status_raw'   => '',
 			'status_label' => '',
@@ -461,6 +472,28 @@ function qhta_revenue_row( $args ) {
 	}
 
 	return $row;
+}
+
+/**
+ * Normalise whatever a fee/net filter returned.
+ *
+ * The two `*_fee_net` filters are extension points, so a third party may well
+ * return the two-element array the first release documented rather than the
+ * three-element one with the breakdown. Padding here means `list()` at the call
+ * sites always destructures cleanly instead of emitting a notice on the day
+ * someone hooks it.
+ *
+ * @param mixed $value Filter return value.
+ * @return array{0:float|null,1:float|null,2:array}
+ */
+function qhta_revenue_normalise_fee_net( $value ) {
+	$value = array_values( (array) $value );
+
+	return array(
+		isset( $value[0] ) ? $value[0] : null,
+		isset( $value[1] ) ? $value[1] : null,
+		isset( $value[2] ) && is_array( $value[2] ) ? $value[2] : array(),
+	);
 }
 
 /**

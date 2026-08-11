@@ -1,5 +1,91 @@
 # Changelog
 
+## 1.1.0 — 11 August 2026
+
+Membership fees now come from Stripe. In 1.0.0 every membership order read
+**Unknown**, which was honest but useless — the totals showed `$1,340.00` gross
+and `$0.00` net of known fees across 11 orders.
+
+### The finding behind this release
+- **PMPro does not record the Stripe processing fee anywhere.** 1.0.0 shipped a
+  candidate list of order-meta keys and a diagnostic to confirm which was right;
+  the answer turned out to be that there is nothing to confirm. PMPro's own
+  gateway code contains no balance-transaction lookup and its orders screen shows
+  no fee — every `balance_transaction` reference in the plugin is inside its
+  bundled Stripe SDK. So the API is not the convenient route to a membership fee,
+  it is the only one. The meta-key path is left in place (it costs nothing and an
+  add-on may yet populate it) but is no longer expected to fire.
+
+- **PMPro's free Stripe Connect integration takes an extra 2%**, paid to Stranger
+  Studios out of the same payout as Stripe's fee.
+  `PMProGateway_stripe::get_application_fee_percentage()` returns 0 only on
+  manual API keys or a premium licence, and the countries where it is disabled
+  are BR/IN/MX/MY — Australia is not exempt. No stored meta key could ever have
+  surfaced this; the balance transaction itemises it, so now it is visible.
+
+### Added
+- **Stripe fee backfill** (`includes/stripe-fees.php`). For any Stripe order with
+  no recorded fee, the charge's **balance transaction** is fetched and its `fee`
+  used. Applies to both sources — for membership it is the only path, for store
+  orders only when `_stripe_fee` is missing.
+
+- **Reuses PMPro's existing Stripe credentials**, so there is no second key to
+  create, store or rotate. `PMProGateway_stripe::get_secretkey()` has been
+  private since PMPro 3.0, so the same public options are read directly with that
+  method's own logic (manual key, or the live/sandbox Connect key per
+  `pmpro_gateway_environment`). Only `GET` requests are ever issued with it. The
+  `qhta_revenue_stripe_key` filter swaps in a restricted read-only key, or `''`
+  to switch the lookup off.
+
+- **Fee breakdown.** Where Stripe itemises the deduction, the fee cell shows the
+  split on hover (`Stripe $2.94 + PMPro platform fee $2.20`) and the totals call
+  the platform component out separately — because unlike a card network's cut, it
+  is removable by buying a licence.
+
+- **Transaction-id routing.** `ch_`/`py_` → the charge, `pi_` → the
+  PaymentIntent's latest charge, `in_` → the invoice's charge. Anything else (a
+  `sub_` subscription, a PayPal reference) has no single charge behind it and
+  stays Unknown rather than being forced through a wrong endpoint.
+
+- **A footer that says why a fee is still unknown**, distinguishing the three
+  cases that need three different responses: no usable Stripe key, lookups
+  deferred by the per-request cap (with a link to fetch the next batch), or an
+  order whose fee genuinely cannot be retrieved.
+
+### Changed
+- **The "writes nothing" claim is now stated precisely rather than absolutely.**
+  Fee lookups are cached in transients, so the plugin does write. The meaningful
+  half of the guarantee is unchanged and restated in the plugin header and README:
+  no order, member, user or setting is ever created or modified. A cache is not
+  data — deleting every one of those transients loses nothing but speed.
+
+- Both `*_fee_net` filters now carry a third element, the fee breakdown.
+  `qhta_revenue_normalise_fee_net()` pads a two-element return, so a filter
+  written against 1.0.0 keeps working.
+
+### Decisions worth knowing
+- **No Stripe SDK.** The call goes through `wp_remote_get()`. PMPro and
+  WooCommerce each bundle their own copy of the Stripe PHP SDK, and loading a
+  third into the same process invites a version clash — for four fields off one
+  endpoint, a plain HTTP request is both smaller and safer.
+
+- **A failed lookup is cached for an hour.** Without that, a Stripe outage or a
+  revoked key would have every page load retry every uncached order, and the
+  screen would hang for as long as the problem lasted.
+
+- **Live lookups are capped at 25 per page load.** A wide date range full of
+  uncached orders would otherwise become hundreds of sequential HTTP requests and
+  a timeout. Cached rows do not count against the cap, so the cost is one-off and
+  the footer says how many are still queued.
+
+- **A charge that settled in another currency stays Unknown.** Its fee is in the
+  settlement currency and cannot be subtracted from the order's gross without a
+  conversion this report does not do. Unknown beats a number that looks right.
+
+- **Every failure path returns Unknown, never zero.** No key, an unroutable id, a
+  network error, a currency mismatch — all of them leave the fee unresolved and
+  the row out of the net total, which is the invariant the whole report rests on.
+
 ## 1.0.0 — 11 August 2026
 
 First release. A single admin screen, **QHTA Income**, that answers a question
