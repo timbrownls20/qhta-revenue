@@ -1,0 +1,177 @@
+/*
+ * QHTA Revenue — report screen.
+ *
+ * Loaded only on the report screen (see qhta_revenue_admin_assets()). Everything
+ * is scoped under .qhta-revenue so nothing here can reach another admin page.
+ *
+ * No colours are invented: the palette is WordPress admin's own, so the screen
+ * still looks native in a future admin theme.
+ */
+
+.qhta-revenue .qhta-revenue-intro {
+	max-width: 60em;
+	color: #50575e;
+}
+
+.qhta-revenue-muted {
+	color: #646970;
+	font-size: 12px;
+}
+
+/* --- Presets ---------------------------------------------------------- */
+
+/*
+ * .subsubsub is core's own "All | Published | Draft" list, reused so the period
+ * switcher reads as the same kind of control it is.
+ */
+.qhta-revenue-presets {
+	float: none;
+	margin: 8px 0 0;
+}
+
+.qhta-revenue-presets__sep {
+	color: #c3c4c7;
+}
+
+/* --- Filters ---------------------------------------------------------- */
+
+.qhta-revenue-filters {
+	margin: 1em 0;
+	padding: 12px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+}
+
+.qhta-revenue-filters__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 12px;
+}
+
+.qhta-revenue-field {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.qhta-revenue-field > span {
+	font-size: 12px;
+	color: #50575e;
+}
+
+.qhta-revenue-field--check {
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+	padding-bottom: 4px;
+}
+
+.qhta-revenue-field--check > span {
+	font-size: 13px;
+	color: inherit;
+}
+
+.qhta-revenue-field--actions {
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+}
+
+/* --- Totals ----------------------------------------------------------- */
+
+.qhta-revenue-totals {
+	margin: 1em 0;
+}
+
+.qhta-revenue-totals h2 {
+	margin-bottom: 6px;
+	font-size: 15px;
+}
+
+.qhta-revenue-totals__table td,
+.qhta-revenue-totals__table th {
+	padding: 8px 10px;
+}
+
+.qhta-revenue-totals__table tr.qhta-revenue-totals__grand th,
+.qhta-revenue-totals__table tr.qhta-revenue-totals__grand td {
+	font-weight: 600;
+	border-top: 2px solid #c3c4c7;
+}
+
+/* --- Table cells ------------------------------------------------------ */
+
+/*
+ * "Unknown" has to look different from a number, not just say something
+ * different — an unknown fee is the one value on this screen a reader must not
+ * skim past as if it were zero.
+ */
+.qhta-revenue-unknown {
+	color: #996800;
+	font-style: italic;
+}
+
+.qhta-revenue-source {
+	display: inline-block;
+	padding: 1px 7px;
+	border-radius: 9px;
+	font-size: 11px;
+	line-height: 1.6;
+	border: 1px solid #c3c4c7;
+	background: #f6f7f7;
+}
+
+.qhta-revenue-source--membership {
+	border-color: #3582c4;
+	color: #135e96;
+}
+
+.qhta-revenue-source--store {
+	border-color: #2271b1;
+	color: #2c3338;
+}
+
+.qhta-revenue-status--paid {
+	color: #007017;
+}
+
+.qhta-revenue-status--refunded,
+.qhta-revenue-status--failed {
+	color: #b32d2e;
+}
+
+.qhta-revenue-status--pending {
+	color: #996800;
+}
+
+.qhta-revenue-member--yes {
+	color: #007017;
+}
+
+.qhta-revenue-member--unknown {
+	color: #996800;
+	font-style: italic;
+}
+
+.qhta-revenue-diag {
+	margin-top: 2em;
+	padding-top: 1em;
+	border-top: 1px solid #c3c4c7;
+}
+
+.qhta-revenue-diag code {
+	background: #f0f0f1;
+}
+
+/* Money columns read far better right-aligned when scanning for a total. */
+.qhta-revenue .wp-list-table .column-amount,
+.qhta-revenue .wp-list-table .column-fee,
+.qhta-revenue .wp-list-table .column-net,
+.qhta-revenue-totals__table td {
+	text-align: right;
+}
+
+.qhta-revenue-totals__table th[scope="row"] {
+	text-align: left;
+}
