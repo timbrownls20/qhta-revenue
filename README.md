@@ -90,7 +90,7 @@ income with it.
 | Reference | PMPro order code → PMPro order screen | Woo order number → Woo order screen |
 | Customer | billing name / display name, with email beneath | billing name / display name, with email beneath |
 | Item | membership level name | first product name `(+N)` |
-| Gross | order total | `$order->get_total()` |
+| Gross | order total | order total, less any **partial** refund (flagged, original on hover) |
 | Stripe fee | looked up from Stripe (PMPro records none), `0` for Pay by Check | `_stripe_fee`, else looked up from Stripe, `0` for non-Stripe |
 | Net | gross − fee | `_stripe_net`, else gross − fee |
 | Status | PMPro status, normalised | Woo status, normalised |
@@ -319,9 +319,19 @@ only reads.
 - **Not a Stripe payout reconciliation.** It shows the **per-order** fee and net.
   It does not reconcile against Stripe *payout batches*, fees on refunds,
   disputes or chargebacks, or the Stripe balance itself.
-- **Net is net of fees, not net of refunds.** Refunds are not subtracted from the
-  totals. Refunded orders appear under the Refunded status and can be filtered
-  to, but a refunded order under "All statuses" still contributes its gross.
+- **Refunds are handled two different ways, on purpose.** A **partial** refund is
+  deducted from that order's gross (and so from the net), because WooCommerce
+  leaves such an order on `completed` and it would otherwise read as fully paid;
+  the cell is flagged and shows the original total on hover. A **full** refund is
+  not deducted — its status already says Refunded, the Paid-only default filters
+  it out, and zeroing it would make the Refunded view a column of `$0.00`. Under
+  "All statuses" a fully refunded order still contributes its gross.
+- **Refunds are reported against the order's date, not the refund's.** A July
+  order refunded in August still counts in July. Reporting refunds on the date
+  they happened would make them a third data stream with rows of their own — a
+  bigger change than this report is scoped for.
+- **Stripe keeps its fee on a refund.** So a refunded order is a real loss of the
+  fee, which this report does not show anywhere.
 - **No charts.** A table, totals and CSV. No charting library, no dashboard
   widget.
 - **No front end.** Nothing renders on the public site.
@@ -424,8 +434,11 @@ page-cached, and no hPanel cache exclusion is needed.
    would rather it held read-only credentials of its own, create a Stripe
    restricted key (Charges, PaymentIntents, Balance transactions: read) and
    return it from `qhta_revenue_stripe_key`.
-4. **Net of refunds.** Whether the headline "actual income" should also subtract
-   refunds, as a further column beside net-of-fees.
+4. **Refunds on their own date.** Partial refunds are now deducted from the order
+   they belong to (1.1.1), but every refund is still counted against the *order's*
+   date rather than the refund's. Reporting them on the date the money went back
+   means refunds become rows in their own right — say so if that is the view you
+   actually reconcile against.
 5. **Monthly summary.** A totals-by-month mini-table above the list (still no
    charts).
 6. **Menu placement and capability.** Top-level and `manage_woocommerce` as

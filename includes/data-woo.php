@@ -135,6 +135,31 @@ function qhta_revenue_normalise_store_order( $order ) {
 	list( $member_state, $member_level, $member_note ) = qhta_revenue_member_flag( $user_id, $email );
 
 	$raw_status = (string) $order->get_status();
+	$status_key = qhta_revenue_normalise_status( 'woo', $raw_status );
+
+	$amount   = (float) $order->get_total();
+	$refunded = (float) $order->get_total_refunded();
+
+	// A PARTIALLY refunded order is the case that would otherwise overstate
+	// income. WooCommerce leaves it on `completed`, and get_total() is the
+	// pre-refund figure, so it reads as fully paid with the money back in the
+	// customer's account and nothing on the row to say so.
+	//
+	// A FULLY refunded order is deliberately left alone: its status already says
+	// Refunded, the paid-only default filters it out anyway, and zeroing its
+	// amount would make the Refunded view a column of $0.00 that tells you
+	// nothing about what was reversed.
+	$partly_refunded = ( 'refunded' !== $status_key && $refunded > 0 );
+
+	if ( $partly_refunded ) {
+		$amount -= $refunded;
+
+		// Any net that came from the gateway describes the original charge, so
+		// it no longer matches the reduced amount. Dropping it to null makes the
+		// row derive net from the amount actually kept, less the fee — which
+		// Stripe keeps on a refund, so the fee itself is not reduced.
+		$net = null;
+	}
 
 	return qhta_revenue_row(
 		array(
@@ -145,11 +170,13 @@ function qhta_revenue_normalise_store_order( $order ) {
 			'customer'     => $customer,
 			'email'        => $email,
 			'item'         => qhta_revenue_order_items_label( $order ),
-			'amount'        => (float) $order->get_total(),
+			'amount'        => $amount,
 			'fee'           => $fee,
 			'net'           => $net,
 			'fee_breakdown' => $fee_breakdown,
-			'status'       => qhta_revenue_normalise_status( 'woo', $raw_status ),
+			'refunded'      => $partly_refunded ? $refunded : 0.0,
+			'amount_before_refund' => $partly_refunded ? (float) $order->get_total() : 0.0,
+			'status'       => $status_key,
 			'status_raw'   => $raw_status,
 			'gateway'      => (string) $order->get_payment_method_title(),
 			'member'       => $member_state,
@@ -249,7 +276,12 @@ function qhta_revenue_store_fee_net( $order ) {
 
 	if ( null === $fee && ! qhta_revenue_is_stripe( $order ) ) {
 		$fee = 0.0;
-		$net = ( null === $net ) ? (float) $order->get_total() : $net;
+
+		// Net is left for the row to derive from the amount rather than set to
+		// the order total here, because the amount may have had a partial
+		// refund taken off it by then. A zero fee makes the two identical
+		// anyway, so nothing is lost by deferring it.
+		$net = null;
 	}
 
 	if ( null !== $net && null === $fee ) {

@@ -243,7 +243,27 @@ class QHTA_Revenue_List_Table extends WP_List_Table {
 	 * @return string
 	 */
 	public function column_amount( $item ) {
-		return esc_html( qhta_revenue_money( $item['amount'] ) );
+		$amount = esc_html( qhta_revenue_money( $item['amount'] ) );
+
+		if ( empty( $item['refunded'] ) ) {
+			return $amount;
+		}
+
+		// This row's gross has already had a partial refund taken off it, and
+		// the status still reads Paid — so without saying so here, the figure
+		// would silently disagree with the same order in WooCommerce.
+		return sprintf(
+			'<span class="qhta-revenue-refunded" title="%1$s">%2$s</span>',
+			esc_attr(
+				sprintf(
+					/* translators: 1: original order total, 2: amount refunded. */
+					__( '%1$s less %2$s refunded', 'qhta-revenue' ),
+					qhta_revenue_money( $item['amount_before_refund'] ),
+					qhta_revenue_money( $item['refunded'] )
+				)
+			),
+			$amount
+		);
 	}
 
 	/**

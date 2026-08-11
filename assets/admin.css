@@ -122,6 +122,12 @@
 	cursor: help;
 }
 
+/* Same "hover for the rest of the story" cue as an itemised fee. */
+.qhta-revenue-refunded {
+	border-bottom: 1px dotted #b32d2e;
+	cursor: help;
+}
+
 .qhta-revenue-source {
 	display: inline-block;
 	padding: 1px 7px;

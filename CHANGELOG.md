@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.1.1 — 11 August 2026
+
+### Fixed
+- **A partially refunded store order no longer counts as fully paid.**
+  WooCommerce leaves a partial refund on `completed` and `get_total()` returns
+  the pre-refund figure, so such an order appeared in the Paid totals at its full
+  gross with nothing on the row to say money had gone back. The refund is now
+  deducted from that row's gross and net, the cell is flagged with the original
+  total on hover, and the totals footer states how many orders and how much.
+
+  | Refund | Before | Now |
+  |---|---|---|
+  | PMPro (always full — `refunds->create` with no amount) | status `refunded`, excluded from Paid | unchanged |
+  | Woo, full | status `refunded`, excluded from Paid | unchanged |
+  | Woo, **partial** | **counted at full gross under Paid** | deducted from gross and net, row flagged |
+
+  A **full** refund is deliberately still not deducted: its status already
+  carries the fact, the paid-only default filters it out anyway, and zeroing the
+  amount would turn the Refunded view into a column of `$0.00` that says nothing
+  about what was reversed.
+
+- A non-Stripe order's net is now derived from the row's amount rather than
+  re-read from `get_total()`, so a partial refund reaches the net on bank
+  transfers too. With a zero fee the two were otherwise identical, which is why
+  it went unnoticed.
+
+### Notes
+- **Stripe keeps its fee on a refund**, so a refunded order is a genuine loss of
+  that fee. The report does not show that anywhere — noted in the README rather
+  than guessed at.
+- Refunds are still counted against the **order's** date, not the refund's. A
+  July order refunded in August remains July income here. Changing that makes
+  refunds a third data stream with rows of their own; see the open items.
+
 ## 1.1.0 — 11 August 2026
 
 Membership fees now come from Stripe. In 1.0.0 every membership order read

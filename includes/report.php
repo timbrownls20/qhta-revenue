@@ -370,6 +370,11 @@ function qhta_revenue_totals( $rows ) {
 		'fees'         => 0.0,
 		'net'          => 0.0,
 		'unknown_fee'  => 0,
+		// Partial refunds already deducted from the gross above, kept so the
+		// screen can say the deduction happened rather than leaving a total
+		// that quietly disagrees with WooCommerce's own order list.
+		'refunded'     => 0.0,
+		'refunded_rows' => 0,
 		// The slice of the fees that is not Stripe's — PMPro's platform cut.
 		// Tracked separately because it is the one component that can be
 		// removed by a licence rather than negotiated with a card network.
@@ -392,6 +397,11 @@ function qhta_revenue_totals( $rows ) {
 
 			++$totals[ $bucket ]['count'];
 			$totals[ $bucket ]['gross'] += (float) $row['amount'];
+
+			if ( ! empty( $row['refunded'] ) ) {
+				$totals[ $bucket ]['refunded'] += (float) $row['refunded'];
+				++$totals[ $bucket ]['refunded_rows'];
+			}
 
 			if ( null === $row['fee'] ) {
 				++$totals[ $bucket ]['unknown_fee'];
@@ -438,6 +448,12 @@ function qhta_revenue_row( $args ) {
 			// Components of the fee, when Stripe told us — e.g. its own charge
 			// and PMPro's platform cut, which come out of the same payout.
 			'fee_breakdown' => array(),
+			// Set only for a PARTIALLY refunded order, where the amount above
+			// has already had the refund taken off it and the status still
+			// reads Paid. Zero on everything else, including fully refunded
+			// orders, whose status carries the fact instead.
+			'refunded'      => 0.0,
+			'amount_before_refund' => 0.0,
 			'status'       => 'other',
 			'status_raw'   => '',
 			'status_label' => '',

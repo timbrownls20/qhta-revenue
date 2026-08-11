@@ -429,6 +429,28 @@ function qhta_revenue_render_totals( $totals, $filters ) {
 
 	echo '</tbody></table>';
 
+	// Partial refunds are the one case where a row's gross is not the order
+	// total, so the deduction is stated rather than left to be discovered by
+	// someone cross-checking against WooCommerce's own order list.
+	if ( ! empty( $totals['all']['refunded_rows'] ) ) {
+		printf(
+			'<p class="qhta-revenue-muted">%s</p>',
+			esc_html(
+				sprintf(
+					/* translators: 1: number of partially refunded orders, 2: total refunded. */
+					_n(
+						'%1$d order was partially refunded; %2$s has been deducted from the gross above. Fully refunded orders are not deducted — they show under the Refunded status instead.',
+						'%1$d orders were partially refunded; %2$s has been deducted from the gross above. Fully refunded orders are not deducted — they show under the Refunded status instead.',
+						$totals['all']['refunded_rows'],
+						'qhta-revenue'
+					),
+					$totals['all']['refunded_rows'],
+					qhta_revenue_money( $totals['all']['refunded'] )
+				)
+			)
+		);
+	}
+
 	// PMPro's free Stripe Connect integration adds its own 2% on top of
 	// Stripe's processing fee, out of the same payout. It is worth calling out
 	// separately rather than burying inside "fees", because unlike a card
