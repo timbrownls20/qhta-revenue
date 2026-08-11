@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       QHTA Revenue
  * Description:       Admin-only, read-only combined income report for qhta.com.au — merges PMPro membership orders and WooCommerce store orders into one filterable, exportable table, with a Member? flag on store buyers and the Stripe fee and net banked per order. No writes, no front-end, no invoices.
- * Version:           1.1.1
+ * Version:           1.2.0
  * Author:            QHTA
  * License:           GPL-2.0-or-later
  * Requires at least: 6.0
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'QHTA_REVENUE_VERSION', '1.1.1' );
+define( 'QHTA_REVENUE_VERSION', '1.2.0' );
 define( 'QHTA_REVENUE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'QHTA_REVENUE_URL', plugin_dir_url( __FILE__ ) );
 define( 'QHTA_REVENUE_SLUG', 'qhta-revenue' );
@@ -307,3 +307,4 @@ require_once QHTA_REVENUE_PATH . 'includes/data-woo.php';
 require_once QHTA_REVENUE_PATH . 'includes/stripe-fees.php';
 require_once QHTA_REVENUE_PATH . 'includes/export-csv.php';
 require_once QHTA_REVENUE_PATH . 'includes/admin-page.php';
+require_once QHTA_REVENUE_PATH . 'includes/healthcheck.php';

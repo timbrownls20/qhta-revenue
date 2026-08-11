@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.2.0 — 12 August 2026
+
+### Added
+- **Healthcheck canaries**, in `includes/healthcheck.php` — six checks registered on
+  `qhta-healthcheck`'s `qhta_healthcheck_checks` filter: the PMPro orders table *and the eight columns
+  read by name*, `wc_get_orders()`, the `manage_woocommerce` capability the screen falls back from,
+  the Stripe secret key resolving out of PMPro's options, a daily `GET /v1/balance` proving the key
+  still works, and whether PMPro and WooCommerce agree on currency.
+
+  This plugin's failure mode is quieter than most: it does not error when a dependency moves, it
+  produces a **wrong number**. A renamed PMPro column yields an empty membership column rather than an
+  exception; a rotated Stripe key yields a page of Unknown fees and an overstated net. Both still look
+  like a report, which is why the canaries are about the integrity of the figures rather than about
+  features appearing.
+
+  The currency check is the one nothing else would ever surface — the report adds membership and store
+  amounts into one total, and if the two systems are configured in different currencies that total is
+  arithmetic on unlike units with nothing anywhere saying so.
+
+  Nothing runs unless `qhta-healthcheck` is installed.
+
 ## 1.1.1 — 11 August 2026
 
 ### Fixed

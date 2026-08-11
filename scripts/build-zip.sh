@@ -69,6 +69,7 @@ zip -rq "$staging_zip" "$PLUGIN_SLUG" \
 	   "*.git*" \
 	   "*.claude*" \
 	   "*.zip" \
+	   "qhta-revenue/HEALTHCHECK.md" \
 	   "$PLUGIN_SLUG/scripts/*" \
 	   "$PLUGIN_SLUG/$PLUGIN_SLUG-handover.md"
 
