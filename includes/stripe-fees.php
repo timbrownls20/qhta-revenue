@@ -406,6 +406,157 @@ function qhta_revenue_backfill_store_fee( $fee_net, $order ) {
 add_filter( 'qhta_revenue_store_fee_net', 'qhta_revenue_backfill_store_fee', 10, 2 );
 
 /**
+ * Stripe id prefix → the dashboard section that id lives in.
+ *
+ * Both systems store "whatever the gateway handed back" in the same field, and
+ * that is not always a Stripe id at all — a Pay by Check membership order
+ * carries a synthetic `CHECKFCC8287EE3`, and a manual order may carry nothing.
+ * Matching on Stripe's own prefixes is therefore what decides whether a row gets
+ * a link: an id of an unrecognised shape yields no link rather than a dashboard
+ * URL that 404s.
+ *
+ * Charge (`ch_`/`py_`) and PaymentIntent (`pi_`) ids both resolve under
+ * /payments — Stripe redirects a charge id to the payment it belongs to.
+ *
+ * @return array<string,array{0:string,1:string}> Prefix => path segment, label.
+ */
+function qhta_revenue_stripe_dashboard_objects() {
+	return (array) apply_filters(
+		'qhta_revenue_stripe_dashboard_objects',
+		array(
+			'ch_'  => array( 'payments', __( 'payment', 'qhta-revenue' ) ),
+			'py_'  => array( 'payments', __( 'payment', 'qhta-revenue' ) ),
+			'pi_'  => array( 'payments', __( 'payment', 'qhta-revenue' ) ),
+			'in_'  => array( 'invoices', __( 'invoice', 'qhta-revenue' ) ),
+			'sub_' => array( 'subscriptions', __( 'subscription', 'qhta-revenue' ) ),
+			'cus_' => array( 'customers', __( 'customer', 'qhta-revenue' ) ),
+		)
+	);
+}
+
+/**
+ * Which dashboard section a stored id belongs to, if any.
+ *
+ * @param string $txn_id Stored transaction id.
+ * @return array{0:string,1:string}|null Path segment and label, or null.
+ */
+function qhta_revenue_stripe_dashboard_object( $txn_id ) {
+	$txn_id = trim( (string) $txn_id );
+
+	foreach ( qhta_revenue_stripe_dashboard_objects() as $prefix => $spec ) {
+		if ( 0 === strpos( $txn_id, $prefix ) ) {
+			return $spec;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Is this source's Stripe connection in test mode?
+ *
+ * Asked per source rather than once for the site, because the two integrations
+ * carry their own switch and can disagree — a shop left in test while
+ * memberships take live payments is exactly the state that would otherwise send
+ * every store link to a live URL that has no such payment behind it.
+ *
+ * The membership side mirrors the environment check in qhta_revenue_stripe_key()
+ * deliberately: if the report is reading fees with the live key it should be
+ * linking to the live dashboard, and a single rule keeps those two from drifting.
+ *
+ * @param string $source Row source, 'membership' or 'store'.
+ * @return bool
+ */
+function qhta_revenue_stripe_is_test_mode( $source ) {
+	if ( 'store' === $source ) {
+		$settings = (array) get_option( 'woocommerce_stripe_settings', array() );
+
+		return isset( $settings['testmode'] ) && 'yes' === $settings['testmode'];
+	}
+
+	return 'live' !== get_option( 'pmpro_gateway_environment' );
+}
+
+/**
+ * Dashboard URL for a stored transaction id.
+ *
+ * Deliberately account-agnostic: the URL names the object and lets Stripe resolve
+ * it against whichever account the reader is signed into. That is right for this
+ * site, where memberships and the shop settle into one Stripe account and the
+ * treasurer is signed into it. Someone signed into a *different* account will get
+ * Stripe's "no such payment" page — if that is a real risk here, the filter below
+ * is where to prepend an `acct_…` segment.
+ *
+ * @param string $txn_id Stored transaction id.
+ * @param string $source Row source, 'membership' or 'store'.
+ * @return string|null URL, or null when the id is not a Stripe object.
+ */
+function qhta_revenue_stripe_dashboard_url( $txn_id, $source = 'membership' ) {
+	$txn_id = trim( (string) $txn_id );
+	$object = qhta_revenue_stripe_dashboard_object( $txn_id );
+
+	$url = $object
+		? 'https://dashboard.stripe.com/'
+			. ( qhta_revenue_stripe_is_test_mode( $source ) ? 'test/' : '' )
+			. $object[0] . '/' . rawurlencode( $txn_id )
+		: null;
+
+	/**
+	 * Filter a row's Stripe dashboard URL.
+	 *
+	 * Return null to suppress the link, or a rewritten URL to point it elsewhere
+	 * — an account-scoped `dashboard.stripe.com/acct_…/payments/…`, say.
+	 *
+	 * @param string|null $url    Resolved URL, or null when the id is not a Stripe object.
+	 * @param string      $txn_id Stored transaction id.
+	 * @param string      $source Row source.
+	 */
+	return apply_filters( 'qhta_revenue_stripe_dashboard_url', $url, $txn_id, $source );
+}
+
+/**
+ * Every Stripe object one row links out to.
+ *
+ * A membership row can carry two — the payment and the subscription it renewed
+ * — which are different places in the dashboard and answer different questions,
+ * so both are offered rather than picking one. A store row carries at most one.
+ *
+ * @param array $row Normalised report row.
+ * @return array[] Each: id, url, label.
+ */
+function qhta_revenue_stripe_links( $row ) {
+	$links = array();
+	$seen  = array();
+
+	// The ids are joined for display and export by qhta_revenue_row()'s producers;
+	// Stripe ids contain no slash, so splitting on one recovers them exactly.
+	foreach ( explode( '/', (string) $row['txn_ids'] ) as $txn_id ) {
+		$txn_id = trim( $txn_id );
+
+		if ( '' === $txn_id || isset( $seen[ $txn_id ] ) ) {
+			continue;
+		}
+
+		$seen[ $txn_id ] = true;
+
+		$object = qhta_revenue_stripe_dashboard_object( $txn_id );
+		$url    = qhta_revenue_stripe_dashboard_url( $txn_id, $row['source'] );
+
+		if ( ! $object || ! $url ) {
+			continue;
+		}
+
+		$links[] = array(
+			'id'    => $txn_id,
+			'url'   => $url,
+			'label' => $object[1],
+		);
+	}
+
+	return $links;
+}
+
+/**
  * Human summary of a fee breakdown, for the fee cell's tooltip.
  *
  * @param array $breakdown Fee type => amount.

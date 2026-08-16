@@ -87,7 +87,7 @@ income with it.
 |---|---|---|
 | Source | `Membership` | `Store` |
 | Date | order timestamp, shown in site time | order created date |
-| Reference | PMPro order code → PMPro order screen | Woo order number → Woo order screen |
+| Reference | PMPro order code → PMPro order screen, plus a link out to Stripe | Woo order number → Woo order screen, plus a link out to Stripe |
 | Customer | billing name / display name, with email beneath | billing name / display name, with email beneath |
 | Item | membership level name | first product name `(+N)` |
 | Gross | order total | order total, less any **partial** refund (flagged, original on hover) |
@@ -98,6 +98,43 @@ income with it.
 | Member? (now) | always Yes + level | **resolved** — see below |
 
 The raw source status is on the status cell as a tooltip.
+
+### The link out to Stripe
+
+Under the order reference, both kinds of row carry a link straight to the object
+in the Stripe dashboard — the thing you actually need when a figure on this
+screen has to be reconciled against a payout or a customer query.
+
+The link is built from the transaction id each system already records, so it is
+the same mechanism on both sides rather than two integrations:
+
+| Stored id | Goes to |
+|---|---|
+| `ch_…`, `py_…`, `pi_…` | `/payments/…` |
+| `in_…` | `/invoices/…` |
+| `sub_…` | `/subscriptions/…` |
+| `cus_…` | `/customers/…` |
+
+A membership row often carries two — the payment and the subscription that
+renewed it — and both are offered, because they are different pages answering
+different questions.
+
+Two things follow from building the link off the id rather than off the gateway:
+
+- **An id that is not a Stripe object gets no link.** A Pay by Check membership
+  order stores a synthetic id like `CHECKFCC8287EE3`; a manual order may store
+  nothing. Those rows show no second line rather than a link to a 404.
+- **Test and live are kept apart.** Membership links follow
+  `pmpro_gateway_environment` — the same switch `qhta_revenue_stripe_key()` picks
+  the key with — and store links follow the WooCommerce Stripe gateway's own
+  `testmode` setting, so a shop left in test while memberships run live does not
+  send you to the wrong dashboard.
+
+The URL names the object and lets Stripe resolve it against whichever account
+you are signed into, which is right for this site — memberships and the shop
+settle into one account. Signed into a different Stripe account you will get
+"no such payment"; `qhta_revenue_stripe_dashboard_url` is where to prepend an
+`acct_…` segment if that ever matters here.
 
 ### Status normalisation
 
@@ -397,6 +434,8 @@ page-cached, and no hPanel cache exclusion is needed.
 | `qhta_revenue_stripe_cache_ttl` | 30 days | How long a resolved fee is cached |
 | `qhta_revenue_stripe_miss_ttl` | 1 hour | How long a failed lookup is remembered |
 | `qhta_revenue_stripe_lookup_budget` | `25` | Live Stripe lookups allowed per page load |
+| `qhta_revenue_stripe_dashboard_objects` | charge/PI/invoice/subscription/customer | Which id prefixes get a dashboard link, and where they point |
+| `qhta_revenue_stripe_dashboard_url` | resolved URL, or `null` | Rewrite a row's Stripe link — account-scoped URLs — or return `null` to suppress it |
 | `qhta_revenue_store_fee_net` | meta, then Stripe | Last word on a store order's fee/net |
 | `qhta_revenue_membership_fee_net` | Stripe | Last word on a membership order's fee/net |
 | `qhta_revenue_pmpro_timestamps_are_utc` | `true` | If a PMPro order's date here disagrees with PMPro's own screen, try this first |

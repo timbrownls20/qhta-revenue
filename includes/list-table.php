@@ -201,21 +201,59 @@ class QHTA_Revenue_List_Table extends WP_List_Table {
 	}
 
 	/**
-	 * Reference cell — links through to the order on its own system's screen.
+	 * Reference cell — links through to the order, and out to Stripe.
+	 *
+	 * Both links live here rather than in a column of their own because they
+	 * answer the same question — "show me this order somewhere I can act on it"
+	 * — and the table is already eleven columns wide. Membership and store rows
+	 * are treated identically: the link comes off the transaction id both sources
+	 * already record, so neither is a special case.
+	 *
+	 * Rows with no Stripe object behind them — Pay by Check, bank transfer, a
+	 * manually entered order — simply get no second line. Nothing is rendered as
+	 * a dead link.
 	 *
 	 * @param array $item Row.
 	 * @return string
 	 */
 	public function column_ref( $item ) {
-		if ( ! $item['edit_url'] ) {
-			return esc_html( $item['ref'] );
+		$out = $item['edit_url']
+			? sprintf( '<a href="%1$s">%2$s</a>', esc_url( $item['edit_url'] ), esc_html( $item['ref'] ) )
+			: esc_html( $item['ref'] );
+
+		$links = function_exists( 'qhta_revenue_stripe_links' )
+			? qhta_revenue_stripe_links( $item )
+			: array();
+
+		if ( ! $links ) {
+			return $out;
 		}
 
-		return sprintf(
-			'<a href="%1$s">%2$s</a>',
-			esc_url( $item['edit_url'] ),
-			esc_html( $item['ref'] )
-		);
+		$parts = array();
+
+		foreach ( $links as $link ) {
+			// The id is the tooltip rather than the link text: it is what you
+			// paste into a reconciliation, but it is forty characters wide and
+			// this column also has to hold the order reference.
+			$parts[] = sprintf(
+				'<a class="qhta-revenue-stripe-link" href="%1$s" target="_blank" rel="noopener noreferrer" title="%2$s">%3$s<span aria-hidden="true"> &#8599;</span></a>',
+				esc_url( $link['url'] ),
+				esc_attr(
+					sprintf(
+						/* translators: %s: the Stripe object id, e.g. pi_3Ab… */
+						__( 'Open %s in the Stripe dashboard', 'qhta-revenue' ),
+						$link['id']
+					)
+				),
+				esc_html( $link['label'] )
+			);
+		}
+
+		return $out
+			. '<br><span class="qhta-revenue-muted">'
+			. esc_html__( 'Stripe:', 'qhta-revenue' ) . ' '
+			. implode( ' <span class="qhta-revenue-stripe-link__sep">&middot;</span> ', $parts )
+			. '</span>';
 	}
 
 	/**

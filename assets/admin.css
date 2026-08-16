@@ -122,6 +122,25 @@
 	cursor: help;
 }
 
+/*
+ * The link out to Stripe sits under the order reference. Kept on one line so the
+ * arrow never wraps away from the word it belongs to, and left undecorated until
+ * hover so the row's primary link — the order itself — stays the obvious one.
+ */
+.qhta-revenue-stripe-link {
+	white-space: nowrap;
+	text-decoration: none;
+}
+
+.qhta-revenue-stripe-link:hover,
+.qhta-revenue-stripe-link:focus {
+	text-decoration: underline;
+}
+
+.qhta-revenue-stripe-link__sep {
+	color: #c3c4c7;
+}
+
 /* Same "hover for the rest of the story" cue as an itemised fee. */
 .qhta-revenue-refunded {
 	border-bottom: 1px dotted #b32d2e;

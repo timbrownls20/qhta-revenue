@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.3.0 — 16 August 2026
+
+### Added
+- **A link out to Stripe on every row that has one**, under the order reference, for membership and
+  store rows alike. The report could already tell you what Stripe deducted; it could not take you to
+  the charge, so reconciling a figure against a payout meant copying a transaction id out of the CSV
+  and pasting it into the dashboard's search.
+
+  Built from the transaction id both systems already record, so it is one mechanism rather than two
+  integrations: the id's prefix decides the destination (`ch_`/`py_`/`pi_` → payments, `in_` →
+  invoices, `sub_` → subscriptions, `cus_` → customers). A membership row that carries both a payment
+  and a subscription id offers both — they are different pages answering different questions.
+
+  Two consequences of keying off the id rather than the gateway, both deliberate. An id that is not a
+  Stripe object — a Pay by Check order's synthetic `CHECK…`, a manually entered order's blank — gets
+  no link at all rather than one that lands on a 404. And test and live are resolved separately per
+  source, membership from `pmpro_gateway_environment` and store from the WooCommerce Stripe gateway's
+  own `testmode`, so a shop left in test while memberships run live does not send you to the wrong
+  dashboard.
+
+  New filters `qhta_revenue_stripe_dashboard_objects` and `qhta_revenue_stripe_dashboard_url`; the
+  latter is where to prepend an `acct_…` segment if these links ever need to name the account
+  explicitly.
+
 ## 1.2.0 — 12 August 2026
 
 ### Added
